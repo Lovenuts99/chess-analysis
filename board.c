@@ -834,21 +834,116 @@ void board_apply_move(struct chess_board *board, const struct chess_move *move) 
     board_draw(board);
 }
 
+// TODO: print the state of the game.
+//helper: check if coordinates are valid
+bool is_valid_pos(int x, int y) {
+    return x >= 0 && x < 8 && y >= 0 && y < 8;
+}
 
-//helper funct
+//core logic: check if the current player's king is under attack
+bool is_in_check(const struct chess_board *board, enum chess_player player) {
+    int kx = -1, ky = -1;
+
+    //1.find the king
+    for (int y = 0; y < 8; y++) {
+        for (int x = 0; x < 8; x++) {
+            if (board->board_array[y][x].piece_type == PIECE_KING &&
+                board->board_array[y][x].colour == player) {
+                kx = x;
+                ky = y;
+                break;
+            }
+        }
+        if (kx != -1) break;
+    }
+
+    if (kx == -1) return false;
+
+    enum chess_player enemy = (player == PLAYER_WHITE) ? PLAYER_BLACK : PLAYER_WHITE;
+
+    //2.check straight lines (rook/queen)
+    int dirs_straight[4][2] = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}};
+    for (int i = 0; i < 4; i++) {
+        for (int dist = 1; dist < 8; dist++) {
+            int nx = kx + dirs_straight[i][0] * dist;
+            int ny = ky + dirs_straight[i][1] * dist;
+            
+            if (!is_valid_pos(nx, ny)) break;
+
+            struct chess_piece p = board->board_array[ny][nx];
+            if (p.piece_type == PIECE_EMPTY) continue;
+            
+            if (p.colour == player) break; //blocked by own piece
+            if (p.colour == enemy) {
+                if (p.piece_type == PIECE_ROOK || p.piece_type == PIECE_QUEEN) return true;
+                break; //blocked by non-attacking enemy
+            }
+        }
+    }
+
+    //3.check diagonals (bishop/queen)
+    int dirs_diag[4][2] = {{1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
+    for (int i = 0; i < 4; i++) {
+        for (int dist = 1; dist < 8; dist++) {
+            int nx = kx + dirs_diag[i][0] * dist;
+            int ny = ky + dirs_diag[i][1] * dist;
+            
+            if (!is_valid_pos(nx, ny)) break;
+
+            struct chess_piece p = board->board_array[ny][nx];
+            if (p.piece_type == PIECE_EMPTY) continue;
+            
+            if (p.colour == player) break;
+            if (p.colour == enemy) {
+                if (p.piece_type == PIECE_BISHOP || p.piece_type == PIECE_QUEEN) return true;
+                break;
+            }
+        }
+    }
+
+    //4.check knights
+    int knight_moves[8][2] = {{1, 2}, {1, -2}, {-1, 2}, {-1, -2}, 
+                              {2, 1}, {2, -1}, {-2, 1}, {-2, -1}};
+    for (int i = 0; i < 8; i++) {
+        int nx = kx + knight_moves[i][0];
+        int ny = ky + knight_moves[i][1];
+        if (is_valid_pos(nx, ny)) {
+            struct chess_piece p = board->board_array[ny][nx];
+            if (p.colour == enemy && p.piece_type == PIECE_KNIGHT) return true;
+        }
+    }
+
+    //5.check pawns
+    int p_dir = (enemy == PLAYER_WHITE) ? -1 : 1; 
+    int p_cols[2] = {-1, 1};
+    for (int i = 0; i < 2; i++) {
+        int nx = kx + p_cols[i];
+        int ny = ky + p_dir;
+        if (is_valid_pos(nx, ny)) {
+            struct chess_piece p = board->board_array[ny][nx];
+            if (p.colour == enemy && p.piece_type == PIECE_PAWN) return true;
+        }
+    }
+
+    return false;
+}
+
+//helper:check if player has any legal moves (placeholder)
+bool has_legal_moves(const struct chess_board *board, enum chess_player player) {
+    return true;
+}
+
 void board_summarize(const struct chess_board *board) {
-    // TODO: print the state of the game.
     //determine whose turn it is
     enum chess_player current_player = board->next_move_player;
-    //is the current player's king under attack?
-    bool in_check = false;
-    //Does the current player have any legal moves left?
-    bool can_move = true;
+    
+    //check game status
+    bool in_check = is_in_check(board, current_player);
+    bool can_move = has_legal_moves(board, current_player);
+
     if (can_move) {
         printf("game incomplete\n");
     } else {
-        //the player has no legal moves，we need to check if it's checkmate or stalemate
-
         if (in_check) {
             if (current_player == PLAYER_WHITE)
                 printf("black wins by checkmate\n");
@@ -859,6 +954,5 @@ void board_summarize(const struct chess_board *board) {
         }
     }
 }
-
 
 //d4 Nf6 Bf4 g6 e3 Bg7 Bd3 d5 Nd2 c6 c3 Qb6 Qb3 Nbd7 Ngf3 Nh5 Qxb6 axb6 h3 Nxf4 exf4 Nf6 a3 O-O O-O Nh5 g3 Bxh3 Rfe1 e6 c4 Bg4 cxd5 exd5 Ne5 Bxe5 dxe5 c5 f3 Bd7 g4 Nxf4 Bc2 Bb5 Nb1 Rfe8 Nc3 Ba6 Ba4 Re7 Rad1 d4 Ne4 Kg7 Nd6 Nd3 Re2 Nxe5 Rf2 Nd3 Rg2 Nf4 Rh2 Ne2 Kg2 Nf4 Kg3 Nd5 Rdh1 Rh8 Bc2 Ne3 Kf4 Nxc2 Rxc2 Re2 Rcc1 Rxb2 Ne4 Rd8 Ng3 d3 Ne4 d2 Rcd1 Rd4 Ke5 Be2 Rxh7 Kxh7 Ng5 Kg7 Rh1 f6 Ke6 fxg5 a4 Bxf3 Rg1 d1=Q Rxd1 Rxd1 a5 Re2
