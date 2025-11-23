@@ -23,6 +23,13 @@ enum piece_type
     PIECE_KING,
     PIECE_EMPTY
 };
+
+enum castle {
+    CASTLE_NONE,
+    CASTLE_KINGSIDE,
+    CASTLE_QUEENSIDE
+};
+
 struct chess_piece {
     enum piece_type piece_type;
     enum chess_player colour;
@@ -68,7 +75,7 @@ struct chess_move
     bool promotion;
     enum piece_type promotion_piece;
     bool en_passant;
-    bool castling;
+    enum castle castling;
 
 
 
