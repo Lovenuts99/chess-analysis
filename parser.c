@@ -23,7 +23,7 @@ bool parse_move(struct chess_move *move)
         return false;
     }
 
-    // --- Castling notation ---
+    // castle notation handling
     if (c == 'O') {
         char dash = getc(stdin);
         char o2   = getc(stdin);
@@ -31,6 +31,8 @@ bool parse_move(struct chess_move *move)
             move->piece_type = PIECE_KING;
             move->castling   = CASTLE_KINGSIDE;
 
+
+            //continues to scan if queenside is entered
             char maybe_dash = getc(stdin);
             if (maybe_dash == '-') {
                 char o3 = getc(stdin);
@@ -49,16 +51,16 @@ bool parse_move(struct chess_move *move)
         return false;
     }
 
-    // --- Pawn moves ---
+    // checks if first letter is lower case indicating a pawn is moving
     if (c >= 'a' && c <= 'h') {
         move->piece_type = PIECE_PAWN;
         char next_c = getc(stdin);
 
-        // Pawn capture like "exd5"
+        // checks if pawn is capturing
         if (next_c == 'x') {
             move->source_x = c - 'a';
             move->capture  = true;
-            c      = getc(stdin); // target file
+            c = getc(stdin); // target file
             next_c = getc(stdin); // target rank
         }
 
@@ -66,7 +68,7 @@ bool parse_move(struct chess_move *move)
         if (next_c >= '1' && next_c <= '8') {
             move->target_square_y = next_c - '1';
 
-            // --- Promotion check (inserted here) ---
+            //chekcs if = sign is present idicating promotion
             char promo = getc(stdin);
             if (promo == '=') {
                 char piece = getc(stdin);
@@ -90,7 +92,7 @@ bool parse_move(struct chess_move *move)
         }
     }
 
-    // --- Piece moves ---
+    // every other pieces notation is handled the same way
     if (c >= 'A' && c <= 'Z') {
         switch (c) {
             case 'K': move->piece_type = PIECE_KING;   break;
@@ -106,7 +108,7 @@ bool parse_move(struct chess_move *move)
         c = getc(stdin);
         char next_c = getc(stdin);
 
-        // --- Handle disambiguation like Qab7 (inserted here) ---
+        // checks for disambiguity ie. the a in Qab7
         if ((c >= 'a' && c <= 'h') && (next_c >= 'a' && next_c <= 'h')) {
             move->source_x = c - 'a';
             move->target_square_x = next_c - 'a';
