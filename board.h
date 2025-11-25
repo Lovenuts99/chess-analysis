@@ -44,11 +44,6 @@ struct chess_board
 {
     enum chess_player next_move_player;
     struct chess_piece board_array[8][8];
-    
-    //en passant moves are included in here becase they are determined by the previous move, controlled by 1 and 0. 
-    int en_passant_available;  
-    int en_passant_x;           
-    int en_passant_y;   
 
     // TODO: what other fields are needed?
 

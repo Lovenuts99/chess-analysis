@@ -4,6 +4,7 @@
 #include <stdio.h>
 
 #include "panic.h"
+#include <stdlib.h>
 
 const char *player_string(enum chess_player player) {
     switch (player) {
@@ -868,6 +869,18 @@ void board_apply_move(struct chess_board *board, const struct chess_move *move) 
             board->board_array[y][3] = board->board_array[y][0];
             board->board_array[y][0].piece_type = PIECE_EMPTY;
         }
+    }
+
+    if (move->piece_type == PIECE_PAWN &&
+        abs(move->target_square_y - move->source_y) == 2)
+    {
+        board->en_passant_available = 1;
+        board->en_passant_x = move->source_x;
+        board->en_passant_y =
+            (move->source_y + move->target_square_y) / 2;
+    }
+    else {
+        board->en_passant_available = 0;
     }
     //move piece to another square while replacing the source square with an empty space
     board->board_array[move->target_square_y][move->target_square_x] = move->moving_piece;

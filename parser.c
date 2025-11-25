@@ -1,6 +1,7 @@
 #include "parser.h"
 #include <stdio.h>
 #include "panic.h"
+#include "board.h"
 
 bool parse_move(struct chess_move *move)
 {
@@ -50,6 +51,33 @@ bool parse_move(struct chess_move *move)
         panicf("parse error: invalid castling notation\n");
         return false;
     }
+    // First character already read into `c`
+    // c is between 'a' and 'h' → pawn move
+
+    char file_from = c - 'a';
+    char next = getc(stdin);
+
+    struct chess_move *move = ...;
+
+    move->piece_type = PIECE_PAWN;
+
+    // Pawn capture: exd5 or exd6 etc.
+    if (next == 'x') {
+        move->capture = true;
+
+        char file_to_c = getc(stdin);   // like 'd'
+        char rank_to_c = getc(stdin);   // like '5'
+
+        move->source_x = file_from;
+        move->target_square_x = file_to_c - 'a';
+        move->target_square_y = (rank_to_c - '1');
+
+        // --- POSSIBLE EN PASSANT ---
+        // If pawn moves diagonally by 1 square, but parser cannot confirm
+        // whether target square contains a piece, mark "maybe en passant"
+        move->en_passant = true;  // board_apply_move() will verify it later
+
+        return move;
 
     // checks if first letter is lower case indicating a pawn is moving
     if (c >= 'a' && c <= 'h') {
