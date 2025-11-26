@@ -146,14 +146,12 @@ bool parse_move(struct chess_move *move)
             if (next_c >= '1' && next_c <= '8') {
                 move->target_square_y = next_c - '1';
                 return true;
-            } else {
-                panicf("parse error at character '%c'\n", next_c);
-                return false;
             }
-        } else {
-            panicf("parse error at character '%c'\n", c);
+            panicf("parse error at character '%c'\n", next_c);
             return false;
         }
+        panicf("parse error at character '%c'\n", c);
+        return false;
     }
 
     panicf("parse error: unexpected character '%c'\n", c);

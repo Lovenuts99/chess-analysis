@@ -44,9 +44,7 @@ struct chess_board
 {
     enum chess_player next_move_player;
     struct chess_piece board_array[8][8];
-    
-    //en passant moves are included in here becase they are determined by the previous move, controlled by 1 and 0. 
-    int en_passant_available;  
+    bool en_passant_available;
     int en_passant_x;           
     int en_passant_y;   
 
@@ -93,7 +91,7 @@ void board_initialize(struct chess_board *board);
 // Determine which piece is moving, and complete the move data accordingly.
 // Panics if there is no piece which can make the specified move, or if there
 // are multiple possible pieces.
-void board_complete_move(const struct chess_board *board, struct chess_move *move);
+void board_complete_move(struct chess_board *board, struct chess_move *move);
 
 // Apply move to the board. The move must already be complete, i.e., the initial
 // square must be known. Panics if the move is not legal in the current board
