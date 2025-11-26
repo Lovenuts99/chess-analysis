@@ -85,6 +85,9 @@ struct chess_move
     // TODO: what other fields are needed?
 };
 
+extern struct chess_move empty_move;
+
+
 // Initializes the state of the board for a new chess game.
 void board_initialize(struct chess_board *board);
 

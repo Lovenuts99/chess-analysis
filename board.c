@@ -15,6 +15,11 @@ const char *player_string(enum chess_player player) {
 }
 
 
+struct chess_piece empty_piece = {
+    .piece_type = PIECE_EMPTY,
+    .colour = PLAYER_EMPTY,
+};
+
 const char *piece_string(enum piece_type piece) {
     switch (piece) {
         case PIECE_PAWN:
@@ -32,10 +37,22 @@ const char *piece_string(enum piece_type piece) {
     }
 }
 
-struct chess_piece empty_piece = {
-    .piece_type = PIECE_EMPTY,
-    .colour = PLAYER_EMPTY,
-};
+struct chess_move make_blank_move(void) {
+    struct chess_move m;
+
+    // Explicit defaults
+    m.castling = CASTLE_NONE;        // no castling by default
+    m.promotion_piece = PIECE_EMPTY; // no promotion piece chosen
+    m.source_known = false;
+    m.source_column_check = false;
+    m.source_row_check = false;
+    m.capture = false;
+    m.promotion = false;
+    m.en_passant = false;
+
+    return m;
+}
+
 
 //intializes board with propper piece order as well as empty squares
 void board_initialize(struct chess_board *board) {
@@ -671,22 +688,19 @@ void board_complete_move(struct chess_board *board, struct chess_move *move) {
         int src_x = -1, src_y = -1;
         int found = 0;
 
-        // All 8 knight move offsets
         int offsets[8][2] = {
-            {1, 2}, {2, 1}, {-1, 2}, {-2, 1},
-            {1, -2}, {2, -1}, {-1, -2}, {-2, -1}
+            {1,2},{2,1},{-1,2},{-2,1},
+            {1,-2},{2,-1},{-1,-2},{-2,-1}
         };
 
-        for (int i = 0; i < 8; i++) {
+        // Find all knights that can reach target
+        for (int i=0;i<8;i++) {
             int x = move->target_square_x + offsets[i][0];
             int y = move->target_square_y + offsets[i][1];
-            if (x >= 0 && x < 8 && y >= 0 && y < 8) {
+            if (x>=0 && x<8 && y>=0 && y<8) {
                 struct chess_piece p = board->board_array[y][x];
-                if (p.piece_type == PIECE_KNIGHT && p.colour == board->next_move_player) {
-                    if (found == 0) {
-                        src_x = x;
-                        src_y = y;
-                    }
+                if (p.piece_type==PIECE_KNIGHT && p.colour==board->next_move_player) {
+                    src_x = x; src_y = y;
                     found++;
                 }
             }
@@ -695,23 +709,23 @@ void board_complete_move(struct chess_board *board, struct chess_move *move) {
         if (found == 0) {
             panicf("move completion error: %s knight to %c%d (no knight can move)",
                    player_string(board->next_move_player),
-                   'a' + move->target_square_x,
-                   move->target_square_y + 1);
-        } else if (found > 1) {
-            // Use disambiguation if provided
+                   'a'+move->target_square_x,
+                   move->target_square_y+1);
+            return;
+        }
+        if (found > 1) {
             if (move->source_x != -1 || move->source_y != -1) {
-                bool matched = false;
-                for (int i = 0; i < 8; i++) {
+                bool matched=false;
+                for (int i=0;i<8;i++) {
                     int x = move->target_square_x + offsets[i][0];
                     int y = move->target_square_y + offsets[i][1];
-                    if (x >= 0 && x < 8 && y >= 0 && y < 8) {
+                    if (x>=0 && x<8 && y>=0 && y<8) {
                         struct chess_piece p = board->board_array[y][x];
-                        if (p.piece_type == PIECE_KNIGHT && p.colour == board->next_move_player) {
-                            if ((move->source_x == -1 || move->source_x == x) &&
-                                (move->source_y == -1 || move->source_y == y)) {
-                                src_x = x;
-                                src_y = y;
-                                matched = true;
+                        if (p.piece_type==PIECE_KNIGHT && p.colour==board->next_move_player) {
+                            if ((move->source_x==-1 || move->source_x==x) &&
+                                (move->source_y==-1 || move->source_y==y)) {
+                                src_x=x; src_y=y; matched=true;
+                                break;
                             }
                         }
                     }
@@ -719,18 +733,20 @@ void board_complete_move(struct chess_board *board, struct chess_move *move) {
                 if (!matched) {
                     panicf("move completion error: %s knight to %c%d (disambiguation does not match any knight)",
                            player_string(board->next_move_player),
-                           'a' + move->target_square_x,
-                           move->target_square_y + 1);
+                           'a'+move->target_square_x,
+                           move->target_square_y+1);
+                    return;
                 }
             } else {
                 panicf("move completion error: %s knight to %c%d (ambiguous knight move, source not specified)",
                        player_string(board->next_move_player),
-                       'a' + move->target_square_x,
-                       move->target_square_y + 1);
+                       'a'+move->target_square_x,
+                       move->target_square_y+1);
+                return;
             }
         }
 
-        // Finalize
+        // Finalize only if src_x/src_y are valid
         move->source_x = src_x;
         move->source_y = src_y;
         move->moving_piece = board->board_array[src_y][src_x];
@@ -987,7 +1003,7 @@ bool is_valid_pos(int x, int y) {
 bool is_in_check(const struct chess_board *board, enum chess_player player) {
     int kx = -1, ky = -1;
 
-    //1.find the king
+    // 1. Find the king
     for (int y = 0; y < 8; y++) {
         for (int x = 0; x < 8; x++) {
             if (board->board_array[y][x].piece_type == PIECE_KING &&
@@ -1000,79 +1016,81 @@ bool is_in_check(const struct chess_board *board, enum chess_player player) {
         if (kx != -1) break;
     }
 
-    if (kx == -1) return false;
+    if (kx == -1) return false; // no king found
 
     enum chess_player enemy = (player == PLAYER_WHITE) ? PLAYER_BLACK : PLAYER_WHITE;
 
-    //2.check straight lines (rook/queen)
-    int dirs_straight[4][2] = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}};
-    for (int i = 0; i < 4; i++) {
-        for (int dist = 1; dist < 8; dist++) {
-            int nx = kx + dirs_straight[i][0] * dist;
-            int ny = ky + dirs_straight[i][1] * dist;
-
-            if (!is_valid_pos(nx, ny)) break;
-
-            struct chess_piece p = board->board_array[ny][nx];
-            if (p.piece_type == PIECE_EMPTY) continue;
-
-            if (p.colour == player) break; //blocked by own piece
-            if (p.colour == enemy) {
-                if (p.piece_type == PIECE_ROOK || p.piece_type == PIECE_QUEEN) return true;
-                break; //blocked by non-attacking enemy
-            }
-        }
-    }
-
-    //3.check diagonals (bishop/queen)
-    int dirs_diag[4][2] = {{1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
-    for (int i = 0; i < 4; i++) {
-        for (int dist = 1; dist < 8; dist++) {
-            int nx = kx + dirs_diag[i][0] * dist;
-            int ny = ky + dirs_diag[i][1] * dist;
-
-            if (!is_valid_pos(nx, ny)) break;
-
-            struct chess_piece p = board->board_array[ny][nx];
-            if (p.piece_type == PIECE_EMPTY) continue;
-
-            if (p.colour == player) break;
-            if (p.colour == enemy) {
-                if (p.piece_type == PIECE_BISHOP || p.piece_type == PIECE_QUEEN) return true;
+    // 2. Check straight lines (rook/queen)
+    int dirs_straight[4][2] = {{0,1},{0,-1},{1,0},{-1,0}};
+    for (int i=0;i<4;i++) {
+        for (int dist=1;dist<8;dist++) {
+            int nx=kx+dirs_straight[i][0]*dist;
+            int ny=ky+dirs_straight[i][1]*dist;
+            if (!is_valid_pos(nx,ny)) break;
+            struct chess_piece p=board->board_array[ny][nx];
+            if (p.piece_type==PIECE_EMPTY) continue;
+            if (p.colour==player) break;
+            if (p.colour==enemy) {
+                if (p.piece_type==PIECE_ROOK || p.piece_type==PIECE_QUEEN) return true;
                 break;
             }
         }
     }
 
-    //4.check knights
-    int knight_moves[8][2] = {
-        {1, 2}, {1, -2}, {-1, 2}, {-1, -2},
-        {2, 1}, {2, -1}, {-2, 1}, {-2, -1}
-    };
-    for (int i = 0; i < 8; i++) {
-        int nx = kx + knight_moves[i][0];
-        int ny = ky + knight_moves[i][1];
-        if (is_valid_pos(nx, ny)) {
-            struct chess_piece p = board->board_array[ny][nx];
-            if (p.colour == enemy && p.piece_type == PIECE_KNIGHT) return true;
+    // 3. Check diagonals (bishop/queen)
+    int dirs_diag[4][2]={{1,1},{1,-1},{-1,1},{-1,-1}};
+    for (int i=0;i<4;i++) {
+        for (int dist=1;dist<8;dist++) {
+            int nx=kx+dirs_diag[i][0]*dist;
+            int ny=ky+dirs_diag[i][1]*dist;
+            if (!is_valid_pos(nx,ny)) break;
+            struct chess_piece p=board->board_array[ny][nx];
+            if (p.piece_type==PIECE_EMPTY) continue;
+            if (p.colour==player) break;
+            if (p.colour==enemy) {
+                if (p.piece_type==PIECE_BISHOP || p.piece_type==PIECE_QUEEN) return true;
+                break;
+            }
         }
     }
 
-    //5.check pawns
-    int p_dir = (enemy == PLAYER_WHITE) ? -1 : 1;
+    // 4. Check knights
+    int knight_moves[8][2]={{1,2},{1,-2},{-1,2},{-1,-2},{2,1},{2,-1},{-2,1},{-2,-1}};
+    for (int i=0;i<8;i++) {
+        int nx=kx+knight_moves[i][0];
+        int ny=ky+knight_moves[i][1];
+        if (is_valid_pos(nx,ny)) {
+            struct chess_piece p=board->board_array[ny][nx];
+            if (p.colour==enemy && p.piece_type==PIECE_KNIGHT) return true;
+        }
+    }
+
+    // 5. Check pawns
+    int p_dir = (enemy == PLAYER_WHITE) ? 1 : -1; // corrected
     int p_cols[2] = {-1, 1};
-    for (int i = 0; i < 2; i++) {
-        int nx = kx + p_cols[i];
-        int ny = ky + p_dir;
-        if (is_valid_pos(nx, ny)) {
-            struct chess_piece p = board->board_array[ny][nx];
-            if (p.colour == enemy && p.piece_type == PIECE_PAWN) return true;
+    for (int i=0;i<2;i++) {
+        int nx=kx+p_cols[i];
+        int ny=ky+p_dir;
+        if (is_valid_pos(nx,ny)) {
+            struct chess_piece p=board->board_array[ny][nx];
+            if (p.colour==enemy && p.piece_type==PIECE_PAWN) return true;
+        }
+    }
+
+    // 6. Check enemy king adjacency
+    for (int dx=-1;dx<=1;dx++) {
+        for (int dy=-1;dy<=1;dy++) {
+            if (dx==0 && dy==0) continue;
+            int nx=kx+dx, ny=ky+dy;
+            if (is_valid_pos(nx,ny)) {
+                struct chess_piece p=board->board_array[ny][nx];
+                if (p.colour==enemy && p.piece_type==PIECE_KING) return true;
+            }
         }
     }
 
     return false;
 }
-
 
 int generate_moves_for_piece(const struct chess_board *board,
                              int x, int y,
@@ -1082,7 +1100,7 @@ int generate_moves_for_piece(const struct chess_board *board,
     enum chess_player player = piece.colour;
     enum chess_player enemy = (player == PLAYER_WHITE) ? PLAYER_BLACK : PLAYER_WHITE;
 
-    // --- Pawn moves ---
+    // --- Pawn ---
     if (piece.piece_type == PIECE_PAWN) {
         int dir = (player == PLAYER_WHITE) ? 1 : -1;
         int start_rank = (player == PLAYER_WHITE) ? 1 : 6;
@@ -1091,61 +1109,57 @@ int generate_moves_for_piece(const struct chess_board *board,
         // Single push
         int ny = y + dir;
         if (is_valid_pos(x, ny) && board->board_array[ny][x].piece_type == PIECE_EMPTY) {
-            moves[count++] = (struct chess_move){x, y, x, ny, false, false, PIECE_PAWN};
+            moves[count++] = (struct chess_move){x,y,x,ny,false,false,PIECE_PAWN};
             if (ny == promote_rank) moves[count-1].promotion = true;
 
             // Double push
             if (y == start_rank) {
                 int ny2 = y + 2*dir;
-                if (board->board_array[ny2][x].piece_type == PIECE_EMPTY) {
-                    moves[count++] = (struct chess_move){x, y, x, ny2, false, false, PIECE_PAWN};
+                if (is_valid_pos(x, ny2) && board->board_array[ny2][x].piece_type == PIECE_EMPTY) {
+                    moves[count++] = (struct chess_move){
+                        x,y,x,ny2,false,false,PIECE_PAWN};
                 }
             }
         }
 
         // Captures + en passant
-        for (int dx = -1; dx <= 1; dx += 2) {
-            int nx = x + dx;
-            ny = y + dir;
-            if (is_valid_pos(nx, ny)) {
+        for (int dx=-1; dx<=1; dx+=2) {
+            int nx = x+dx, ny=y+dir;
+            if (is_valid_pos(nx,ny)) {
                 struct chess_piece target = board->board_array[ny][nx];
-                if (target.piece_type != PIECE_EMPTY && target.colour == enemy) {
-                    moves[count++] = (struct chess_move){x, y, nx, ny, true, false, PIECE_PAWN};
-                    if (ny == promote_rank) moves[count-1].promotion = true;
+                if (target.piece_type!=PIECE_EMPTY && target.colour==enemy) {
+                    moves[count++] = (struct chess_move){x,y,nx,ny,true,false,PIECE_PAWN};
+                    if (ny==promote_rank) moves[count-1].promotion=true;
                 }
                 if (board->en_passant_available &&
-                    nx == board->en_passant_x && ny == board->en_passant_y) {
-                    moves[count++] = (struct chess_move){x, y, nx, ny, true, true, PIECE_PAWN};
+                    nx==board->en_passant_x && ny==board->en_passant_y) {
+                    moves[count++] = (struct chess_move){x,y,nx,ny,true,true,PIECE_PAWN};
                 }
             }
         }
     }
 
-    // --- Knight moves ---
+    // --- Knight ---
     else if (piece.piece_type == PIECE_KNIGHT) {
-        int deltas[8][2] = {
-            {1,2},{2,1},{-1,2},{-2,1},
-            {1,-2},{2,-1},{-1,-2},{-2,-1}
-        };
+        int deltas[8][2]={{1,2},{2,1},{-1,2},{-2,1},{1,-2},{2,-1},{-1,-2},{-2,-1}};
         for (int i=0;i<8;i++) {
-            int nx = x + deltas[i][0];
-            int ny = y + deltas[i][1];
-            if (is_valid_pos(nx, ny)) {
-                struct chess_piece target = board->board_array[ny][nx];
-                if (target.colour != player) {
-                    moves[count++] = (struct chess_move){x,y,nx,ny,(target.piece_type!=PIECE_EMPTY),false,PIECE_KNIGHT};
+            int nx=x+deltas[i][0], ny=y+deltas[i][1];
+            if (is_valid_pos(nx,ny)) {
+                struct chess_piece target=board->board_array[ny][nx];
+                if (target.colour!=player) {
+                    moves[count++] = (struct chess_move){
+                        .source_x = x,.source_y = y,.target_square_x = nx,.target_square_y = ny,(target.piece_type!=PIECE_EMPTY),false,PIECE_KNIGHT};
                 }
             }
         }
     }
 
-    // --- Bishop moves ---
+    // --- Bishop ---
     else if (piece.piece_type == PIECE_BISHOP) {
-        int dirs[4][2] = {{1,1},{1,-1},{-1,1},{-1,-1}};
+        int dirs[4][2]={{1,1},{1,-1},{-1,1},{-1,-1}};
         for (int i=0;i<4;i++) {
             for (int dist=1;dist<8;dist++) {
-                int nx=x+dirs[i][0]*dist;
-                int ny=y+dirs[i][1]*dist;
+                int nx=x+dirs[i][0]*dist, ny=y+dirs[i][1]*dist;
                 if (!is_valid_pos(nx,ny)) break;
                 struct chess_piece target=board->board_array[ny][nx];
                 if (target.piece_type==PIECE_EMPTY) {
@@ -1159,40 +1173,43 @@ int generate_moves_for_piece(const struct chess_board *board,
         }
     }
 
-    // --- Rook moves ---
+    // --- Rook ---
     else if (piece.piece_type == PIECE_ROOK) {
-        int dirs[4][2] = {{1,0},{-1,0},{0,1},{0,-1}};
+        int dirs[4][2]={{1,0},{-1,0},{0,1},{0,-1}};
         for (int i=0;i<4;i++) {
             for (int dist=1;dist<8;dist++) {
-                int nx=x+dirs[i][0]*dist;
-                int ny=y+dirs[i][1]*dist;
+                int nx=x+dirs[i][0]*dist, ny=y+dirs[i][1]*dist;
                 if (!is_valid_pos(nx,ny)) break;
                 struct chess_piece target=board->board_array[ny][nx];
                 if (target.piece_type==PIECE_EMPTY) {
                     moves[count++] = (struct chess_move){x,y,nx,ny,false,false,PIECE_ROOK};
                 } else {
                     if (target.colour==enemy)
-                        moves[count++] = (struct chess_move){x,y,nx,ny,true,false,PIECE_ROOK};
+                        moves[count++] = (struct chess_move){
+                            .source_x        = x,
+                            .source_y        = y,
+                            .target_square_x = nx,
+                            .target_square_y = ny,
+                            .capture         = true,
+                            .promotion       = false,
+                            .piece_type      = PIECE_ROOK
+                        };
                     break;
                 }
             }
         }
     }
 
-    // --- Queen moves ---
+    // --- Queen ---
     else if (piece.piece_type == PIECE_QUEEN) {
-        int dirs[8][2] = {
-            {1,1},{1,-1},{-1,1},{-1,-1},
-            {1,0},{-1,0},{0,1},{0,-1}
-        };
+        int dirs[8][2]={{1,1},{1,-1},{-1,1},{-1,-1},{1,0},{-1,0},{0,1},{0,-1}};
         for (int i=0;i<8;i++) {
             for (int dist=1;dist<8;dist++) {
-                int nx=x+dirs[i][0]*dist;
-                int ny=y+dirs[i][1]*dist;
+                int nx=x+dirs[i][0]*dist, ny=y+dirs[i][1]*dist;
                 if (!is_valid_pos(nx,ny)) break;
                 struct chess_piece target=board->board_array[ny][nx];
                 if (target.piece_type==PIECE_EMPTY) {
-                    moves[count++] = (struct chess_move){x,y,nx,ny,false,false,PIECE_QUEEN};
+                    //
                 } else {
                     if (target.colour==enemy)
                         moves[count++] = (struct chess_move){x,y,nx,ny,true,false,PIECE_QUEEN};
@@ -1202,80 +1219,116 @@ int generate_moves_for_piece(const struct chess_board *board,
         }
     }
 
-    // --- King moves (no castling yet) ---
     else if (piece.piece_type == PIECE_KING) {
-        for (int dx=-1;dx<=1;dx++) {
-            for (int dy=-1;dy<=1;dy++) {
-                if (dx==0 && dy==0) continue;
-                int nx=x+dx, ny=y+dy;
-                if (is_valid_pos(nx,ny)) {
-                    struct chess_piece target=board->board_array[ny][nx];
-                    if (target.colour!=player) {
-                        moves[count++] = (struct chess_move){x,y,nx,ny,(target.piece_type!=PIECE_EMPTY),false,PIECE_KING};
-                    }
-                }
-            }
-        }
-
-    // Normal king moves
-    for (int dx=-1; dx<=1; dx++) {
-        for (int dy=-1; dy<=1; dy++) {
-            if (dx==0 && dy==0) continue;
-            int nx=x+dx, ny=y+dy;
-            if (is_valid_pos(nx,ny)) {
-                struct chess_piece target=board->board_array[ny][nx];
-                if (target.colour!=player) {
-                    moves[count++] = (struct chess_move){x,y,nx,ny,(target.piece_type!=PIECE_EMPTY),false,PIECE_KING};
+    // Normal king moves (one square in any direction)
+    for (int dx = -1; dx <= 1; dx++) {
+        for (int dy = -1; dy <= 1; dy++) {
+            if (dx == 0 && dy == 0) continue;
+            int nx = x + dx, ny = y + dy;
+            if (is_valid_pos(nx, ny)) {
+                struct chess_piece target = board->board_array[ny][nx];
+                if (target.colour != player) {
+                    moves[count++] = (struct chess_move){
+                        .source_x        = x,
+                        .source_y        = y,
+                        .target_square_x = nx,
+                        .target_square_y = ny,
+                        .capture         = (target.piece_type != PIECE_EMPTY),
+                        .promotion       = false,
+                        .piece_type      = PIECE_KING,
+                        .moving_piece = board->board_array[y][x]
+                    };
                 }
             }
         }
     }
 
-    // Castling
-    if (player == PLAYER_WHITE && x==4 && y==0) { // king on e1
-        // Kingside: rook on h1, squares f1,g1 empty
+    // --- Castling ---
+    if (player == PLAYER_WHITE && x == 4 && y == 0) { // king on e1
+        // Kingside castle (e1 → g1, rook h1 → f1)
         if (board->board_array[0][7].piece_type == PIECE_ROOK &&
             board->board_array[0][7].colour == PLAYER_WHITE &&
             board->board_array[0][5].piece_type == PIECE_EMPTY &&
             board->board_array[0][6].piece_type == PIECE_EMPTY &&
             !is_in_check(board, PLAYER_WHITE)) {
-            moves[count++] = (struct chess_move){4,0,6,0,false,false,PIECE_KING};
-            moves[count-1].castling = true;
+
+            // simulate king stepping to f1
+            struct chess_board temp = *board;
+            temp.board_array[0][5] = temp.board_array[0][4];
+            temp.board_array[0][4].piece_type = PIECE_EMPTY;
+            if (!is_in_check(&temp, PLAYER_WHITE)) {
+                // simulate king stepping to g1
+                temp.board_array[0][6] = temp.board_array[0][5];
+                temp.board_array[0][5].piece_type = PIECE_EMPTY;
+                if (!is_in_check(&temp, PLAYER_WHITE)) {
+                    moves[count++] = (struct chess_move){4,0,6,0,false,false,PIECE_KING};
+                    moves[count-1].castling = true;
+                }
+            }
         }
-        // Queenside: rook on a1, squares b1,c1,d1 empty
+        // Queenside castle (e1 → c1, rook a1 → d1)
         if (board->board_array[0][0].piece_type == PIECE_ROOK &&
             board->board_array[0][0].colour == PLAYER_WHITE &&
             board->board_array[0][1].piece_type == PIECE_EMPTY &&
             board->board_array[0][2].piece_type == PIECE_EMPTY &&
             board->board_array[0][3].piece_type == PIECE_EMPTY &&
             !is_in_check(board, PLAYER_WHITE)) {
-            moves[count++] = (struct chess_move){4,0,2,0,false,false,PIECE_KING};
-            moves[count-1].castling = true;
+
+            struct chess_board temp = *board;
+            temp.board_array[0][3] = temp.board_array[0][4]; // king to d1
+            temp.board_array[0][4].piece_type = PIECE_EMPTY;
+            if (!is_in_check(&temp, PLAYER_WHITE)) {
+                temp.board_array[0][2] = temp.board_array[0][3]; // king to c1
+                temp.board_array[0][3].piece_type = PIECE_EMPTY;
+                if (!is_in_check(&temp, PLAYER_WHITE)) {
+                    moves[count++] = (struct chess_move){4,0,2,0,false,false,PIECE_KING};
+                    moves[count-1].castling = true;
+                }
+            }
         }
     }
-    else if (player == PLAYER_BLACK && x==4 && y==7) { // king on e8
-        // Kingside: rook on h8, squares f8,g8 empty
+    else if (player == PLAYER_BLACK && x == 4 && y == 7) { // king on e8
+        // Kingside castle (e8 → g8, rook h8 → f8)
         if (board->board_array[7][7].piece_type == PIECE_ROOK &&
             board->board_array[7][7].colour == PLAYER_BLACK &&
             board->board_array[7][5].piece_type == PIECE_EMPTY &&
             board->board_array[7][6].piece_type == PIECE_EMPTY &&
             !is_in_check(board, PLAYER_BLACK)) {
-            moves[count++] = (struct chess_move){4,7,6,7,false,false,PIECE_KING};
-            moves[count-1].castling = true;
+
+            struct chess_board temp = *board;
+            temp.board_array[7][5] = temp.board_array[7][4]; // king to f8
+            temp.board_array[7][4].piece_type = PIECE_EMPTY;
+            if (!is_in_check(&temp, PLAYER_BLACK)) {
+                temp.board_array[7][6] = temp.board_array[7][5]; // king to g8
+                temp.board_array[7][5].piece_type = PIECE_EMPTY;
+                if (!is_in_check(&temp, PLAYER_BLACK)) {
+                    moves[count++] = (struct chess_move){4,7,6,7,false,false,PIECE_KING};
+                    moves[count-1].castling = true;
+                }
+            }
         }
-        // Queenside: rook on a8, squares b8,c8,d8 empty
+        // Queenside castle (e8 → c8, rook a8 → d8)
         if (board->board_array[7][0].piece_type == PIECE_ROOK &&
             board->board_array[7][0].colour == PLAYER_BLACK &&
             board->board_array[7][1].piece_type == PIECE_EMPTY &&
             board->board_array[7][2].piece_type == PIECE_EMPTY &&
             board->board_array[7][3].piece_type == PIECE_EMPTY &&
             !is_in_check(board, PLAYER_BLACK)) {
-            moves[count++] = (struct chess_move){4,7,2,7,false,false,PIECE_KING};
-            moves[count-1].castling = true;
+
+            struct chess_board temp = *board;
+            temp.board_array[7][3] = temp.board_array[7][4]; // king to d8
+            temp.board_array[7][4].piece_type = PIECE_EMPTY;
+            if (!is_in_check(&temp, PLAYER_BLACK)) {
+                temp.board_array[7][2] = temp.board_array[7][3]; // king to c8
+                temp.board_array[7][3].piece_type = PIECE_EMPTY;
+                if (!is_in_check(&temp, PLAYER_BLACK)) {
+                    moves[count++] = (struct chess_move){4,7,2,7,false,false,PIECE_KING};
+                    moves[count-1].castling = true;
+                }
+            }
         }
     }
-
-    }
+}
 
     return count;
 }
@@ -1284,9 +1337,11 @@ bool has_legal_moves(const struct chess_board *board, enum chess_player player) 
     // Loop through all squares
     for (int y = 0; y < 8; y++) {
         for (int x = 0; x < 8; x++) {
-            const struct chess_piece piece = board->board_array[y][x];
-            if (piece.colour != player || piece.piece_type == PIECE_EMPTY) {
-                continue; // skip empty or opponent pieces
+            struct chess_piece piece = board->board_array[y][x];
+
+            // Skip empty squares and opponent pieces
+            if (piece.piece_type == PIECE_EMPTY || piece.colour != player) {
+                continue;
             }
 
             // Generate pseudo-legal moves for this piece
@@ -1296,33 +1351,39 @@ bool has_legal_moves(const struct chess_board *board, enum chess_player player) 
             // Test each move
             for (int i = 0; i < move_count; i++) {
                 struct chess_board temp = *board;   // copy board
-                board_apply_move(&temp, &moves[i]);       // make the move
-                if (!is_in_check(&temp, player)) {  // king safe?
-                    return true; // found at least one legal move
+                board_apply_move(&temp, &moves[i]); // apply move
+
+                // If king is safe after this move, it's legal
+                if (!is_in_check(&temp, player)) {
+                    return true;
                 }
             }
         }
     }
-    return false; // no legal moves found
+    // No legal moves found
+    return false;
 }
 
+
+
+
 void board_summarize(const struct chess_board *board) {
-    //determine whose turn it is
     enum chess_player current_player = board->next_move_player;
 
-    //check game status
     bool in_check = is_in_check(board, current_player);
-    bool can_move = false; //has_legal_moves(board, current_player);
+    bool can_move = has_legal_moves(board, current_player);
 
     if (can_move) {
         printf("game incomplete\n");
     } else {
         if (in_check) {
+            // Current player is checkmated → opponent wins
             if (current_player == PLAYER_WHITE)
-                printf("White wins by checkmate\n");
-            else
                 printf("Black wins by checkmate\n");
+            else
+                printf("White wins by checkmate\n");
         } else {
+            // No moves, not in check → stalemate
             printf("draw by stalemate\n");
         }
     }

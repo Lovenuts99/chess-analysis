@@ -9,7 +9,8 @@ bool parse_move(struct chess_move *move)
     move->source_x  = -1;
     move->source_y  = -1;
     move->castling  = CASTLE_NONE;
-    move->promotion = PIECE_EMPTY;   // new field for promotion
+    move->promotion = PIECE_EMPTY;
+    move->en_passant = false;// new field for promotion
 
     char c;
 
