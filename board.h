@@ -46,7 +46,11 @@ struct chess_board
     struct chess_piece board_array[8][8];
     bool en_passant_available;
     int en_passant_x;           
-    int en_passant_y;   
+    int en_passant_y;
+    bool castle_kingside_black;
+    bool castle_kingside_white;
+    bool castle_queenside_black;
+    bool castle_queenside_white;
 
     // TODO: what other fields are needed?
 
